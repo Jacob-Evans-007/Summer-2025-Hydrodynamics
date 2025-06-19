@@ -2,8 +2,8 @@ import numpy as np
 from scipy.constants import G, proton_mass
 from scipy.constants import k as k_B  # Boltzmann constant in J/K
 from scipy.interpolate import interp1d
-from astropy import units as u
-from astropy.constants import G, k_B, m_p
+#from astropy import units as u
+#from astropy.constants import G, k_B, m_p
 
 solarm = 1.988 * 10 ** 33  # solar mass (g)
 meandens = 9.21 * 10 ** (-30)  # 'mean universal density'
