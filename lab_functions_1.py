@@ -1,9 +1,10 @@
 import numpy as np
 from scipy.constants import G, proton_mass
 from scipy.constants import k as k_B  # Boltzmann constant in J/K
-from scipy.interpolate import interpolate
+from scipy.interpolate import interp1d
+from astropy import units as u
+from astropy.constants import G, k_B, m_p
 
-G = 6.6743 * 10 ** (-8)  # cm^3 g^-1 s^-2
 solarm = 1.988 * 10 ** 33  # solar mass (g)
 meandens = 9.21 * 10 ** (-30)  # 'mean universal density'
 kpc_to_cm = 3.0857e21
@@ -11,6 +12,9 @@ gamma = 5 / 3
 mu = 0.6
 mp_g = proton_mass * 1e3
 k_Bcgs = k_B * 1e7
+ktc = kpc_to_cm
+G = 6.6743*10**-8
+m_p = proton_mass*1e3
 
 
 def Ax(n):
@@ -19,7 +23,7 @@ def Ax(n):
 
 def vcgrab(r, rs, R):
     Rhalf = 3 * kpc_to_cm
-    stelmas = 1.575e10
+    stelmas = 1.6e10
     vc1 = (G * stelmas * solarm) / (r + (Rhalf))
 
     c = R / rs
@@ -29,20 +33,14 @@ def vcgrab(r, rs, R):
 
 
 def Tc(r, rs, R):
-    const = (0.6 * mp_g / (gamma * k_Bcgs))
+    const = (0.6 * m_p / (gamma * k_Bcgs))
     vc2 = vcgrab(r, rs, R)**2
     return const * vc2
 
 
 def Lambdacalc(T):
     adjT = np.log10(T)
-    x = np.array(
-        [4.20, 4.24, 4.28, 4.32, 4.36, 4.40, 4.44, 4.48, 4.52, 4.56, 4.60, 4.64, 4.68, 4.72, 4.76, 4.80, 4.84, 4.88,
-         4.92, 4.96, 5.00, 5.04, 5.08, 5.12, 5.16, 5.20, 5.24, 5.28, 5.32, 5.36, 5.40, 5.44, 5.48, 5.52, 5.56, 5.60,
-         5.64, 5.68, 5.72, 5.76, 5.80, 5.84, 5.88, 5.92, 5.96, 6.00, 6.04, 6.08, 6.12, 6.16, 6.20, 6.24, 6.28, 6.32,
-         6.36, 6.40, 6.44, 6.48, 6.52, 6.56, 6.60, 6.64, 6.68, 6.72, 6.76, 6.80, 6.84, 6.88, 6.92, 6.96, 7.00, 7.04,
-         7.08, 7.12, 7.16, 7.20, 7.24, 7.28, 7.32, 7.36, 7.40, 7.44, 7.48, 7.52, 7.56, 7.60, 7.64, 7.68, 7.72, 7.76,
-         7.80, 7.84, 7.88, 7.92, 7.96, 8.00, 8.04, 8.08, 8.12, 8.16])
+    x = np.arange(4.20, 8.20, 0.04)
     y = np.array(
         [-21.6114, -21.4833, -21.5129, -21.5974, -21.6878, -21.7659, -21.8092, -21.8230, -21.8059, -21.7621, -21.6941,
          -21.6111, -21.5286, -21.4387, -21.3589, -21.2816, -21.2168, -21.1700, -21.1423, -21.1331, -21.1525, -21.1820,
@@ -54,7 +52,8 @@ def Lambdacalc(T):
          -22.7697, -22.7655, -22.7605, -22.7565, -22.7461, -22.7323, -22.7176, -22.7039, -22.6873, -22.6700, -22.6613,
          -22.6436, -22.6251, -22.6071, -22.5914, -22.5727, -22.5542, -22.5360, -22.5172, -22.5014, -22.4828, -22.4642,
          -22.4455])
-    f = interpolate.interp1d(x, y, kind='linear')
+         #consider making dictionary
+    f = interp1d(x, y, kind='cubic', fill_value='extrapolate')
     adjLamb = f(adjT)
     Lambda = 10 ** adjLamb
     return Lambda
@@ -75,6 +74,6 @@ def dVcdrfunc(r, rs, R):
     logvc = np.log(Vc)
     logr = np.log(r)
 
-    logvc2 = np.log(vcgrab(r + 3.0857e18, rs, R))
-    logr2 = np.log(r + 3.0857e18)
+    logvc2 = np.log(vcgrab(r + 3.0857e15, rs, R))
+    logr2 = np.log(r + 3.0857e15)
     return (logvc2 - logvc) / (logr2 - logr)
