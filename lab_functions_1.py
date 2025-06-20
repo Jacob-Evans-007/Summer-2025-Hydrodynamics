@@ -23,7 +23,7 @@ def Ax(n):
 
 def vcgrab(r, rs, R):
     Rhalf = 3 * kpc_to_cm
-    stelmas = 1.6e10
+    stelmas = 6.3e10
     vc1 = (G * stelmas * solarm) / (r + (Rhalf))
 
     c = R / rs
