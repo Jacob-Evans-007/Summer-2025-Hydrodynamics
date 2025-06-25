@@ -77,3 +77,18 @@ def dVcdrfunc(r, rs, R):
     logvc2 = np.log(vcgrab(r + 3.0857e15, rs, R))
     logr2 = np.log(r + 3.0857e15)
     return (logvc2 - logvc) / (logr2 - logr)
+
+from scipy.integrate import cumulative_trapezoid
+
+r_grid = np.linspace(ktc, 1000000 * ktc, 5000000)  # finer grid = better accuracy
+vc2_over_r = np.array([(vcgrab(r, 27.1 * ktc, 210 * ktc)**2 / r) for r in r_grid])
+
+phi_cumint = cumulative_trapezoid(vc2_over_r, r_grid, initial=0.0)
+
+phi_values = -(phi_cumint[-1] - phi_cumint)
+
+phi_interp = interp1d(r_grid, phi_values, kind='cubic', fill_value="extrapolate")
+
+def phi(r):
+    """Interpolated gravitational potential at any r."""
+    return phi_interp(r)
