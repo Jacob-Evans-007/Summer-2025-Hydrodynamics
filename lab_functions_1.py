@@ -21,20 +21,19 @@ def Ax(n):
     return np.log(1 + n) - (n / (1 + n))
 
 
-def vcgrab(r, rs, R):
-    Rhalf = 3 * kpc_to_cm
-    stelmas = 6.3e10
-    vc1 = (G * stelmas * solarm) / (r + (Rhalf))
+def vcgrab(r, rs, R, stelmass, totmass):
+    Rhalf = 3 * ktc * (totmass / 10**12)**(1/3)
+    vc1 = (G * stelmass * solarm) / (r + (Rhalf))
 
     c = R / rs
     x = r / rs
-    vc2 = (G * (1e12 * solarm) * c * Ax(x)) / (R * x * Ax(c))
+    vc2 = (G * (totmass*solarm) * c * Ax(x)) / (R * x * Ax(c))
     return np.sqrt(vc1 + vc2)
 
 
-def Tc(r, rs, R):
+def Tc(r, rs, R, stelmass, totmass):
     const = (0.6 * m_p / (gamma * k_Bcgs))
-    vc2 = vcgrab(r, rs, R)**2
+    vc2 = vcgrab(r, rs, R, stelmass, totmass)**2
     return const * vc2
 
 
@@ -58,6 +57,7 @@ def Lambdacalc(T):
     Lambda = 10 ** adjLamb
     return Lambda
 
+
 def dLdTfunc(T):
     Lambda = Lambdacalc(T)
     logT = np.log(T)
@@ -69,26 +69,33 @@ def dLdTfunc(T):
     return (logLadj - logL) / (logTadj - logT)
 
 
-def dVcdrfunc(r, rs, R):
-    Vc = vcgrab(r, rs, R)
+def dVcdrfunc(r, rs, R, stelmass, totmass):
+    Vc = vcgrab(r, rs, R, stelmass, totmass)
     logvc = np.log(Vc)
     logr = np.log(r)
 
-    logvc2 = np.log(vcgrab(r + 3.0857e15, rs, R))
+    logvc2 = np.log(vcgrab(r + 3.0857e15, rs, R, stelmass, totmass))
     logr2 = np.log(r + 3.0857e15)
     return (logvc2 - logvc) / (logr2 - logr)
 
-from scipy.integrate import cumulative_trapezoid
 
-r_grid = np.linspace(ktc, 1000000 * ktc, 5000000)  # finer grid = better accuracy
-vc2_over_r = np.array([(vcgrab(r, 27.1 * ktc, 210 * ktc)**2 / r) for r in r_grid])
+def rhocalc(v, tftc, T, r):
+    gamma = 5/3
+    nset = 10**np.arange(-7, 10, 0.01)
+    rhoset = nset*mp_g
+    Pset = nset * k_Bcgs * T
+    tcoolset = (Pset/(gamma/(gamma-1)) / (nset**2 * Lambdacalc(T)))
+    vset = (r / (tcoolset * tftc))
 
-phi_cumint = cumulative_trapezoid(vc2_over_r, r_grid, initial=0.0)
-
-phi_values = -(phi_cumint[-1] - phi_cumint)
-
-phi_interp = interp1d(r_grid, phi_values, kind='cubic', fill_value="extrapolate")
-
-def phi(r):
-    """Interpolated gravitational potential at any r."""
-    return phi_interp(r)
+    lv = np.log10(v)
+    lvs = np.log10(vset)
+    arr = lvs - lv
+    inds = ((np.sign(arr[1:]) * np.sign(arr[:-1])) < 0).nonzero()[0]
+    if len(inds)!=1: return False
+    ind = inds[0]
+    log_rhoset = np.log10(rhoset)
+    if vset[ind]<vset[ind+1]: 
+        good_lrho = np.interp(lv, lvs[ind:ind+2], log_rhoset[ind:ind+2]) 
+    else:
+        good_lrho = np.interp(lv, lvs[ind+1:ind-1:-1], log_rhoset[ind+1:ind-1:-1]) 
+    return 10.**good_lrho
