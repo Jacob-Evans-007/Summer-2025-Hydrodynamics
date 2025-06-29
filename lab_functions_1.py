@@ -2,6 +2,7 @@ import numpy as np
 from scipy.constants import G, proton_mass
 from scipy.constants import k as k_B  # Boltzmann constant in J/K
 from scipy.interpolate import interp1d
+from scipy.special import erf
 #from astropy import units as u
 #from astropy.constants import G, k_B, m_p
 
@@ -37,7 +38,10 @@ def Tc(r, rs, R, stelmass, totmass):
     return const * vc2
 
 
-def Lambdacalc(T):
+def expcor(a):
+    return (1.31 * np.exp(a * -.63))/(0.3)
+
+def Lambdacalc(T, r):
     adjT = np.log10(T)
     x = np.arange(4.20, 8.20, 0.04)
     y = np.array(
@@ -55,7 +59,10 @@ def Lambdacalc(T):
     f = interp1d(x, y, kind='cubic', fill_value='extrapolate')
     adjLamb = f(adjT)
     Lambda = 10 ** adjLamb
-    return Lambda
+
+    logr = np.log10(r/ktc)
+    clogr = expcor(logr)
+    return Lambda*clogr
 
 
 def dLdTfunc(T):
@@ -84,7 +91,7 @@ def rhocalc(v, tftc, T, r):
     nset = 10**np.arange(-7, 10, 0.01)
     rhoset = nset*mp_g
     Pset = nset * k_Bcgs * T
-    tcoolset = (Pset/(gamma/(gamma-1)) / (nset**2 * Lambdacalc(T)))
+    tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(T, r)))
     vset = (r / (tcoolset * tftc))
 
     lv = np.log10(v)
