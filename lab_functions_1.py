@@ -41,7 +41,7 @@ def Tc(r, rs, R, stelmass, totmass):
 def expcor(a):
     return (1.31 * np.exp(a * -.63))/(0.3)
 
-def Lambdacalc(T, r):
+def Lambdacalc(T, r, assumedZ):
     adjT = np.log10(T)
     x = np.arange(4.20, 8.20, 0.04)
     y = np.array(
@@ -59,11 +59,13 @@ def Lambdacalc(T, r):
     f = interp1d(x, y, kind='cubic', fill_value='extrapolate')
     adjLamb = f(adjT)
     Lambda = 10 ** adjLamb
-
     logr = np.log10(r/ktc)
     clogr = expcor(logr)
-    return Lambda*clogr
 
+    if assumedZ == "a":
+        return Lambda*clogr
+    else:
+        return Lambda*assumedZ
 
 def dLdTfunc(T):
     Lambda = Lambdacalc(T)
@@ -86,12 +88,12 @@ def dVcdrfunc(r, rs, R, stelmass, totmass):
     return (logvc2 - logvc) / (logr2 - logr)
 
 
-def rhocalc(v, tftc, T, r):
+def rhocalc(v, tftc, T, r, assumedZ):
     gamma = 5/3
     nset = 10**np.arange(-7, 10, 0.01)
     rhoset = nset*mp_g
     Pset = nset * k_Bcgs * T
-    tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(T, r)))
+    tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(T, r, assumedZ)))
     vset = (r / (tcoolset * tftc))
 
     lv = np.log10(v)
