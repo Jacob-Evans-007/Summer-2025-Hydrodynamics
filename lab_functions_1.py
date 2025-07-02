@@ -3,6 +3,7 @@ from scipy.constants import G, proton_mass
 from scipy.constants import k as k_B  # Boltzmann constant in J/K
 from scipy.interpolate import interp1d
 from scipy.special import erf
+import WiersmaCopy as Cool
 #from astropy import units as u
 #from astropy.constants import G, k_B, m_p
 
@@ -108,3 +109,16 @@ def rhocalc(v, tftc, T, r, assumedZ):
     else:
         good_lrho = np.interp(lv, lvs[ind+1:ind-1:-1], log_rhoset[ind+1:ind-1:-1]) 
     return 10.**good_lrho
+
+class Cooling:
+    """interface for cooling function"""
+    
+    def LAMBDA(self,T,nH):
+        """cooling function"""
+        assert(False)
+    def f_dlnLambda_dlnT(self,T,nH):
+        """logarithmic derivative of cooling function with respect to T"""
+        assert(False)
+    def f_dlnLambda_dlnrho(self,T,nH):
+        """logarithmic derivative of cooling function with respect to rho"""
+        assert(False)
