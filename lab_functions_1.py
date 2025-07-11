@@ -6,6 +6,7 @@ from scipy.special import erf
 import WiersmaCopy as Cool
 from astropy.cosmology import FlatLambdaCDM
 from numba import njit
+import Lambda_Tables as LT
 
 cosmo = FlatLambdaCDM(H0=70, Om0=0.30)
 
@@ -20,7 +21,7 @@ ktc = kpc_to_cm
 G = 6.6743*10**-8
 m_p = proton_mass*1e3
 
-
+@njit
 def Ax(n):
     return np.log(1 + n) - (n / (1 + n))
 
@@ -34,30 +35,28 @@ def findR(z, totmass):
     Rvir = (3 * totmass * solarm / (4 * np.pi * delm * rho_m))**(1/3)
     return Rvir
 
-
-
+a = 17 * ktc / (1 + np.sqrt(2))
 vcgrab_cache = {}
+
+
+@njit
+def vc1vc2compute(r, rs, R, stelmass, totmass):
+    vc1 = G * stelmass * solarm * r / (r + a)**2
+
+    c = R / rs
+    x = r / rs
+    vc2 = (G * (totmass * solarm) * c * Ax(x)) / (R * x * Ax(c))
+    return np.sqrt(vc1 + vc2)
 
 def vcgrab(r, z, stelmass, totmass):
     key = (r, z, stelmass, totmass)
-
     if key in vcgrab_cache:
         return vcgrab_cache[key]
     
     R = findR(z, totmass)
     rs = R / 5
 
-    Rhalf = 3 * ktc * (totmass / 1e12)**(1/3)
-    vc1 = (G * stelmass * solarm) / (r + Rhalf)
-
-    a = 17 * ktc / (1 + np.sqrt(2))
-    vc12 = G * stelmass * solarm * r / (r + a)**2
-
-    c = R / rs
-    x = r / rs
-    vc2 = (G * (totmass * solarm) * c * Ax(x)) / (R * x * Ax(c))
-
-    result = np.sqrt(vc12 + vc2)
+    result = vc1vc2compute(r, rs, R, stelmass, totmass)
     vcgrab_cache[key] = result
     return result
 
@@ -66,10 +65,6 @@ def Tc(r, z, stelmass, totmass):
     const = (0.6 * m_p / (gamma * k_Bcgs))
     vc2 = vcgrab(r, z, stelmass, totmass)**2
     return const * vc2
-
-@njit
-def expcor(a):
-    return (1.31 * np.exp(a * -.63))/(0.3)
 
 # Global cache for Wiersma cooling object
 _Wiersma_cache = {}
@@ -83,21 +78,28 @@ y = np.array([-21.6114, -21.4833, -21.5129, -21.5974, -21.6878, -21.7659, -21.80
     -22.7102, -22.7023, -22.6962, -22.6921, -22.6959, -22.6994, -22.7050, -22.7170, -22.7249, -22.7378, -22.7480, -22.7629, -22.7710, 
     -22.7697, -22.7655, -22.7605, -22.7565, -22.7461, -22.7323, -22.7176, -22.7039, -22.6873, -22.6700, -22.6613, -22.6436, -22.6251,
     -22.6071, -22.5914, -22.5727, -22.5542, -22.5360, -22.5172, -22.5014, -22.4828, -22.4642, -22.4455])
-f = interp1d(x, y, kind='cubic', fill_value='extrapolate')
 
-def Lambdacalc(T, r, assumedZ, n):
-    adjT = np.log10(T)
-    adjLamb = f(adjT)
+@njit
+def expcor(logr):
+    clogr = (1.464 * np.exp(-1.306 * logr) + 0.3)/0.3
+    return clogr
+
+def Lambdacalc(logT, r, assumedZ, n):
+    adjLamb = np.interp(logT, x, y)
     Lambda = 10 ** adjLamb
+
+    if logT > 8.16:
+        Lambda = ((10**logT) ** 0.5) * 2.982e-27
 
     # Radius-based metallicity correction (if needed)
     logr = np.log10(r / ktc)
     clogr = expcor(logr)
 
-    if assumedZ == "a":
+    if assumedZ == -1:
         return Lambda * clogr
 
-    elif assumedZ == "W":
+    elif assumedZ == -2:
+        T = 10**logT
         Z2Zsun = 0.3
         z = 0.6
         key = (Z2Zsun, z)
@@ -107,17 +109,7 @@ def Lambdacalc(T, r, assumedZ, n):
         return cooling.fast_LAMBDA(T, n)
 
     else:
-        return Lambda * assumedZ
-
-# def dLdTfunc(T):
-#     Lambda = Lambdacalc(T)
-#     logT = np.log(T)
-#     logL = np.log(Lambda)
-
-#     Lambda2 = Lambdacalc(T * 1.01)
-#     logLadj = np.log(Lambda2)
-#     logTadj = np.log(T * 1.01)
-#     return (logLadj - logL) / (logTadj - logT)
+        return Lambda * (assumedZ/.3)
 
 
 def dVcdrfunc(r, z, stelmass, totmass):
@@ -136,9 +128,9 @@ def rhocalc(v, tftc, T, r, assumedZ):
     rhoset = nset*mp_g
     Pset = nset * k_Bcgs * T
     if assumedZ == "W":
-        tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(T, r, "a", 1)))
+        tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(np.log10(T), r, "a", 1)))
     else:
-        tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(T, r, assumedZ, 1)))
+        tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(np.log10(T), r, assumedZ, 1)))
     vset = (r / (tcoolset * tftc))
 
     lv = np.log10(v)
