@@ -8,13 +8,13 @@ from astropy.cosmology import FlatLambdaCDM
 from numba import njit
 import Lambda_Tables as LT
 
-cosmo = FlatLambdaCDM(H0=70, Om0=0.30)
+cosmo = FlatLambdaCDM(H0=70, Om0=0.315, Ob0=0.0457)
 
 solarm = 1.988 * 10 ** 33  # solar mass (g)
 meandens = 9.21 * 10 ** (-30)  # 'mean universal density'
 kpc_to_cm = 3.0857e21
 gamma = 5 / 3
-mu = 0.6
+mu = 0.593
 mp_g = proton_mass * 1e3
 k_Bcgs = k_B * 1e7
 ktc = kpc_to_cm
@@ -35,7 +35,7 @@ def findR(z, totmass):
     Rvir = (3 * totmass * solarm / (4 * np.pi * delm * rho_m))**(1/3)
     return Rvir
 
-a = 17 * ktc / (1 + np.sqrt(2))
+a = 17 * ktc / (1.8153)
 vcgrab_cache = {}
 
 
@@ -54,7 +54,7 @@ def vcgrab(r, z, stelmass, totmass):
         return vcgrab_cache[key]
     
     R = findR(z, totmass)
-    rs = R / 5
+    rs = R / 4.3
 
     result = vc1vc2compute(r, rs, R, stelmass, totmass)
     vcgrab_cache[key] = result
@@ -147,3 +147,42 @@ def rhocalc(v, tftc, T, r, assumedZ):
     return 10.**good_lrho
 
 #Potentially put on HPCC when speed dies.
+
+def Kcalc(r, z, totmass):
+    R = findR(z, totmass)
+    Ob0 = cosmo.Ob0  # baryon density today
+    E_z = cosmo.efunc(z)  # E(z) = H(z)/H0
+
+    Ob_z = Ob0 * (1 + z)**3 / E_z**2
+    fb = Ob_z / cosmo.Om(z)
+    K200 = (G * totmass * solarm / 2 * R) * (200 * cosmo.critical_density(z) * fb / (1.14 * mp_g))**(-2/3)
+    K = 1.47 * (r/R)**1.22 * K200
+    return K
+
+def dlnTdlnrcalc(R_sonic, x, z, T_sonic_point, Lambdatype): 
+    if Lambdatype == -2:
+        dlnL1 = np.log(Lambdacalc(np.log10(T_sonic_point), R_sonic, 0.2, 1))
+        dlnL2 = np.log(Lambdacalc(np.log10(T_sonic_point*1.01), R_sonic, 0.2, 1))
+    else:
+        dlnL1 = np.log(Lambdacalc(np.log10(T_sonic_point), R_sonic, Lambdatype, 1))
+        dlnL2 = np.log(Lambdacalc(np.log10(T_sonic_point*1.01), R_sonic, Lambdatype, 1))
+    
+    dlnT1 = np.log(T_sonic_point)
+    dlnT2 = np.log(T_sonic_point*1.01)
+    dlnLambda_dlnT = (dlnL2 - dlnL1)/(dlnT2 - dlnT1)
+
+
+    dlnvc_dlnR = dVcdrfunc(R_sonic, z, 3e12, 2e15)
+    
+    #solve quadratic equation    
+    b = 29/6.*x - 17/6. + 1/3.*(1.-x)*(dlnLambda_dlnT)
+    c = 2/3.*x*dlnvc_dlnR + 5*x**2 - 13/3.*x + 2/3.
+    if b**2-4*c >= 0:
+        return [(-b +j * (b**2-4*c)**0.5)/2. for j in (-1,1)]
+    else:
+        return None, None
+
+def Hernqdens(r, z, stelmass):
+    a = 9.3648*ktc
+    rho = (stelmass * solarm / 2 * np.pi)*(a / (r * (r + a)**3))
+    return rho
