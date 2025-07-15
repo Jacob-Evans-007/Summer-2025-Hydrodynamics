@@ -466,3 +466,5 @@ def HeatMapCreator(Mdotlow, Mdothigh, zlow, zhigh, gridsize):
 
     print(f"Best fit → Mdot: {best_n:.2f}, Z: {best_Z:.3f}, Reduced χ²: {best_chi2:.4f}")
     return best_n, best_Z, best_chi2
+
+print("File loaded. Names defined:", dir())
