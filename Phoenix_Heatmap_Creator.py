@@ -1,5 +1,8 @@
 import random
 import statistics
+import matplotlib
+matplotlib.use("Agg")
+matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 import matplotlib.pyplot as plt
 import numpy as np
 #from scipy.integrate import odeint
@@ -62,7 +65,6 @@ def dlnTdlnrcalc(R_sonic, x, T_sonic_point, Lambdatype, pr=True):
     if b**2-4*c >= 0:
         return [(-b +j * (b**2-4*c)**0.5)/2. for j in (-1,1)]
     else:
-        if pr: print('no transsonic solutions')
         return None, None
     
 @njit
@@ -91,8 +93,6 @@ def TheODE(r, C, Mdot, Lambdatype, recorder=None):
     n = rho / (mu * mp_g)
     Lambda = lf.Lambdacalc(np.log10(T), r, Lambdatype, n)
 
-    # if T > 10**8.16:
-    #     print(T)
     dvdr, dTdr = compute_dvdr_dTdr(v, T, r, Mdot, vc2, Lambda)
 
     if recorder is not None:
@@ -197,7 +197,6 @@ def sonic_point_shooting(Rsonic, Lambdatype, Rmax=20000*ktc, tol=1e-8, epsilon=1
     while x_high - x_low > tol:
         #INITIAL GUESSES
         x = 0.5 * (x_high + x_low)
-        #print(x)
         cs2_sonic = vc_interp(Rsonic)**2 / (2 * x)
         v_sonic = cs2_sonic**0.5
         T_sonic = mu * mp_g * cs2_sonic / (gamma * k_Bcgs)
@@ -232,7 +231,6 @@ def sonic_point_shooting(Rsonic, Lambdatype, Rmax=20000*ktc, tol=1e-8, epsilon=1
         cs2_0 = (gamma * k_Bcgs * T0) / (mu * mp_g)
         mach0 = v0 / np.sqrt(cs2_0)
         if mach0 > 1.0:
-            print("starts supersonic")
             x_high = x
             continue
 
@@ -240,10 +238,9 @@ def sonic_point_shooting(Rsonic, Lambdatype, Rmax=20000*ktc, tol=1e-8, epsilon=1
         bern = 0.5 * v0**2 + 1.5 * cs2_0 + phi0
         
         if bern > 0:
-            print(f"starts unbound")
             x_low = x
             continue
-        res_raw = solve_ivp(TheODE, [R0, Rmax], [v0, T0], args=(Mdot, Lambdatype, None), method='RK45', 
+        res_raw = solve_ivp(TheODE, [R0, Rmax], [v0, T0], args=(Mdot, Lambdatype, None), method='LSODA', 
             atol=1e-5, rtol=1e-5, events=my_event_list, dense_output=True)
         
         if res_raw.status < 0:
@@ -261,8 +258,6 @@ def sonic_point_shooting(Rsonic, Lambdatype, Rmax=20000*ktc, tol=1e-8, epsilon=1
         
         res = IntegrationResult(res_raw, stop_reason, xval=x, R0=R0, v0=v0, T0=T0)
         
-        #print(f"maximum r = {res.Rs()[-1] / 3.0857e21:.2f} kpc; stop reason: {res.stopReason()}")
-        
         if res.stopReason() in ('sonic point', 'lowT', 'overstepdlnv'):
             x_high = x
             continue
@@ -272,16 +267,13 @@ def sonic_point_shooting(Rsonic, Lambdatype, Rmax=20000*ktc, tol=1e-8, epsilon=1
         elif res.stopReason() == 'max R reached':
             dlnMdlnRold = dlnMdlnR
             results[x] = res
-            print(f"x = {x}, Rsonic = {Rsonic/ktc} Mdot = {Mdot/Mdot1}")
             break
         else:
-            print(f"Warning: Unexpected stopReason '{res.stopReason()}' — stopping loop.")
             break
     
     if return_all_results:
         return results
     if len(results) == 0:
-        print("no result reached maximum R")
         return None
     else:
         return results[x]
@@ -289,7 +281,6 @@ def sonic_point_shooting(Rsonic, Lambdatype, Rmax=20000*ktc, tol=1e-8, epsilon=1
 def find_converged_x(Rsonic, Lambdatype):
     result = sonic_point_shooting(Rsonic, Lambdatype)
     if result is None:
-        print("No solution reached max radius.")
         return None
     return result 
 
@@ -320,7 +311,7 @@ def postprocess(b, Mdot, Lambdatype):
 
     recorder = {"ra2": [], "varray": [], "Tarray": [], "rhoarray": [], "Bern": [], "Mach": []}
 
-    res = solve_ivp(TheODE, [R0, Rmax], [v0, T0], args=(Mdot, Lambdatype, recorder), method='RK45', max_step=Rmax / 100,
+    res = solve_ivp(TheODE, [R0, Rmax], [v0, T0], args=(Mdot, Lambdatype, recorder), method='LSODA', max_step=Rmax / 100,
         atol=1e-5, rtol=1e-5, dense_output=True)
 
     return x, R0, v0, T0, recorder
@@ -406,7 +397,7 @@ y_kvalues = np.log10(np.array([2413.28546, 1405.48459, 656.73673, 360.18178, 201
     15.84893, 13.23546, 8.86801, 3.60182, 2.27259]))
 
 def ChiSquaredCalc(Mdot, Lambdatype):
-    x, R0, v0, T0, recorder = BrentLooper(Mdot*Mdot1, 0.1*ktc, 25*ktc, Lambdatype)
+    x, R0, v0, T0, recorder = BrentLooper(Mdot*Mdot1, 0.5*ktc, 20*ktc, Lambdatype)
     rA = np.array(recorder["ra2"])
     TA = np.array(recorder["Tarray"])
     rhoA = np.array(recorder["rhoarray"])
@@ -420,51 +411,37 @@ def ChiSquaredCalc(Mdot, Lambdatype):
 
 from joblib import Parallel, delayed
 
-def HeatMapCreator(Mdotlow, Mdothigh, zlow, zhigh, gridsize):
-    # Parameter ranges
+import os
+
+
+def HeatMapCreator(Mdotlow, Mdothigh, zlow, zhigh, gridsize, outpath="heatmap_output.png"):
     M_vals = np.linspace(Mdotlow, Mdothigh, gridsize)
     Z_vals = np.linspace(zlow, zhigh, gridsize)
-    
-    # Generate all (i, j, n, Z) tuples for the grid
-    param_grid = [(i, j, n, Z) for i, n in enumerate(M_vals)
-                              for j, Z in enumerate(Z_vals)]
 
-    # Wrapper to safely compute Chi^2
-    def safe_calc(i, j, n, Z):
-        try:
-            chi2 = ChiSquaredCalc(n, Z).sum() / 16
-        except Exception:
-            chi2 = np.nan
-        return (i, j, chi2)
-
-    # Run in parallel across all (n, Z)
-    results = Parallel(n_jobs=-1, verbose=10)(
-        delayed(safe_calc)(i, j, n, Z) for i, j, n, Z in param_grid
-    )
-
-    # Initialize grid and fill with results
     chi2_grid = np.full((gridsize, gridsize), np.nan)
-    for i, j, chi2 in results:
-        chi2_grid[i, j] = chi2
 
-    # Plotting
-    plt.figure(figsize=(8, 6))
-    pcm = plt.pcolormesh(Z_vals, M_vals, chi2_grid, shading='auto', cmap='plasma')
-    plt.xlabel("Metallicity (Z)")
-    plt.ylabel("Mdot")
-    plt.title("Reduced χ² Across Mdot and Z")
-    cbar = plt.colorbar(pcm, label=r"$\chi^2_{\nu}$")
-    plt.grid(True, which='both', ls='--', lw=0.3)
-    plt.tight_layout()
-    plt.show()
+    for i, n in enumerate(M_vals):
+        for j, Z in enumerate(Z_vals):
+            try:
+                chi2 = ChiSquaredCalc(n, Z).sum() / 16
+            except Exception as e:
+                print(f"Failure at i={i}, j={j}, Mdot={n}, Z={Z}: {e}")
+                chi2 = np.nan
+            chi2_grid[i, j] = chi2
 
-    # Best fit location
-    min_idx = np.unravel_index(np.nanargmin(chi2_grid), chi2_grid.shape)
-    best_n = M_vals[min_idx[0]]
-    best_Z = Z_vals[min_idx[1]]
-    best_chi2 = chi2_grid[min_idx]
+    # Basic plot (non-interactive safe)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(chi2_grid, origin='lower', cmap='plasma',
+                   extent=[zlow, zhigh, Mdotlow, Mdothigh], aspect='auto')
+    fig.colorbar(im, ax=ax)
+    fig.savefig(outpath, dpi=300, bbox_inches='tight')
+    plt.close(fig)
 
-    print(f"Best fit → Mdot: {best_n:.2f}, Z: {best_Z:.3f}, Reduced χ²: {best_chi2:.4f}")
-    return best_n, best_Z, best_chi2
+    mi, mj = np.unravel_index(np.nanargmin(chi2_grid), chi2_grid.shape)
+    best_n, best_Z = M_vals[mi], Z_vals[mj]
+    best_chi2 = chi2_grid[mi, mj]
 
-print("File loaded. Names defined:", dir())
+    print(f"Best fit → Mdot: {best_n:.2f}, Z: {best_Z:.3f}, Reduced chi2: {best_chi2:.4f}")
+    print(f"Figure saved to: {os.path.abspath(outpath)}")
+
+    return best_n, best_Z, best_chi2, outpath

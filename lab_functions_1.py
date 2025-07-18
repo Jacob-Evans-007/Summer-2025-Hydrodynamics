@@ -80,8 +80,8 @@ y = np.array([-21.6114, -21.4833, -21.5129, -21.5974, -21.6878, -21.7659, -21.80
     -22.6071, -22.5914, -22.5727, -22.5542, -22.5360, -22.5172, -22.5014, -22.4828, -22.4642, -22.4455])
 
 @njit
-def expcor(logr):
-    clogr = (1.464 * np.exp(-1.306 * logr) + 0.3)/0.3
+def expcor(r):
+    clogr = np.exp(-0.007 * r)
     return clogr
 
 def Lambdacalc(logT, r, assumedZ, n):
@@ -92,8 +92,8 @@ def Lambdacalc(logT, r, assumedZ, n):
         Lambda = ((10**logT) ** 0.5) * 2.982e-27
 
     # Radius-based metallicity correction (if needed)
-    logr = np.log10(r / ktc)
-    clogr = expcor(logr)
+    r = r / ktc
+    clogr = expcor(r)
 
     if assumedZ == -1:
         return Lambda * clogr
@@ -101,7 +101,7 @@ def Lambdacalc(logT, r, assumedZ, n):
     elif assumedZ == -2:
         T = 10**logT
         Z2Zsun = 0.3
-        z = 0.6
+        z = 0.597
         key = (Z2Zsun, z)
         if key not in _Wiersma_cache:
             _Wiersma_cache[key] = Cool.Wiersma_Cooling(Z2Zsun, z)
@@ -127,8 +127,8 @@ def rhocalc(v, tftc, T, r, assumedZ):
     nset = 10**np.arange(-7, 10, 0.01)
     rhoset = nset*mp_g
     Pset = nset * k_Bcgs * T
-    if assumedZ == "W":
-        tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(np.log10(T), r, "a", 1)))
+    if assumedZ == -2:
+        tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(np.log10(T), r, 0.25, 1)))
     else:
         tcoolset = (Pset/(5/2) / (nset**2 * Lambdacalc(np.log10(T), r, assumedZ, 1)))
     vset = (r / (tcoolset * tftc))
@@ -157,12 +157,12 @@ def Kcalc(r, z, totmass):
     fb = Ob_z / cosmo.Om(z)
     K200 = (G * totmass * solarm / 2 * R) * (200 * cosmo.critical_density(z) * fb / (1.14 * mp_g))**(-2/3)
     K = 1.47 * (r/R)**1.22 * K200
-    return K
+    return K.value
 
 def dlnTdlnrcalc(R_sonic, x, z, T_sonic_point, Lambdatype): 
     if Lambdatype == -2:
-        dlnL1 = np.log(Lambdacalc(np.log10(T_sonic_point), R_sonic, 0.2, 1))
-        dlnL2 = np.log(Lambdacalc(np.log10(T_sonic_point*1.01), R_sonic, 0.2, 1))
+        dlnL1 = np.log(Lambdacalc(np.log10(T_sonic_point), R_sonic, 0.25, 1))
+        dlnL2 = np.log(Lambdacalc(np.log10(T_sonic_point*1.01), R_sonic, 0.25, 1))
     else:
         dlnL1 = np.log(Lambdacalc(np.log10(T_sonic_point), R_sonic, Lambdatype, 1))
         dlnL2 = np.log(Lambdacalc(np.log10(T_sonic_point*1.01), R_sonic, Lambdatype, 1))
