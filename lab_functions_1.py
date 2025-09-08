@@ -6,7 +6,6 @@ from scipy.special import erf
 import WiersmaCopy as Cool
 from astropy.cosmology import FlatLambdaCDM
 from numba import njit
-import Lambda_Tables as LT
 from scipy.interpolate import RegularGridInterpolator
 
 cosmo = FlatLambdaCDM(H0=70, Om0=0.315, Ob0=0.0457)
